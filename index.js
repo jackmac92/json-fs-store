@@ -1,115 +1,102 @@
-var async = require('async'),
-    fs = require('graceful-fs'),
-    path = require('path'),
-    uuid = require('node-uuid'),
-    mkdirp = require('mkdirp');
+import uuid from 'node-uuid';
+import mkdirp from 'mkdirp';
+import path from 'path';
+import fs from 'fs';
 
-module.exports = function(dir) {
-  dir = dir || path.join(process.cwd(), 'store');
+const mkderp = dir =>
+  new Promise((resolve, reject) => {
+    mkdirp(dir, err => {
+      if (err) {
+        reject(err);
+      }
+      resolve();
+    });
+  });
+
+export default function(config) {
+  const { storage, preferredKey } = config;
+  const dir = storage || path.join(process.cwd(), 'store');
+  let getKey;
+  switch (typeof preferredKey) {
+    case 'function':
+      getKey = preferredKey;
+      break;
+    case 'string':
+      getKey = obj => `${obj[preferredKey]}`;
+      break;
+    default:
+      getKey = obj => `${obj['id']}`;
+  }
 
   return {
+    dir, // store in this directory
 
-    // store in this directory
-
-    dir: dir,
-
-    // list all stored objects by reading the file system
-
-    list: function(cb) {
-      var self = this;
-      var action = function(err) {
-        if (err) return cb(err);
-        readdir(dir, function(err, files) {
-          if (err) return cb(err);
-          files = files.filter(function(f) { return f.substr(-5) === ".json"; });
-          var fileLoaders = files.map(function(f) {
-            return function(cb) {
-              loadFile(f, cb);
-            };
-          });
-          async.parallel(fileLoaders, function(err, objs) {
-            if (err) return cb(err);
-            sort(objs, cb);
-          });
-        })
-      };
-      mkdirp(dir, action);
+    list() {
+      // list all stored objects by reading the file system
+      return mkderp(dir)
+        .then(() => readDir(dir))
+        .then(files =>
+          Promise.all(files.filter(f => f.substr(-5) === '.json').map(loadFile))
+        );
     },
-
 
     // store an object to file
 
-    add: function(obj, cb) {
-      var action = function(err) {
-        if (err) return cb(err);
-        var json;
-        try {
-          json = JSON.stringify(obj, null, 2);
-        }
-        catch (e) {
-          return cb(e);
-        }
-        obj.id = obj.id || uuid.v4();
-        fs.writeFile(path.join(dir, obj.id + '.json'), json, 'utf8', function(err) {
-          if (err) return cb(err);
-          cb();
-        });
-      };
-      mkdirp(dir, action);
+    add(obj) {
+      return mkderp(dir).then(
+        () =>
+          new Promise((resolve, reject) => {
+            const name = getKey(obj) || uuid.v4();
+            fs.writeFile(
+              path.join(dir, `${name}.json`),
+              JSON.stringify(obj, null, 2),
+              'utf8',
+              err => (err ? reject(err) : resolve(name))
+            );
+          })
+      );
     },
-
 
     // delete an object's file
 
-    remove: function(id, cb) {
-      var action = function(err) {
-        if (err) return cb(err);
-        fs.unlink(path.join(dir, id + '.json'), function(err) {
-          cb(err);
-        });
-      }
-      mkdirp(dir, action);
+    remove(id) {
+      mkderp(dir).then(
+        () =>
+          new Promise((resolve, reject) =>
+            fs.unlink(
+              path.join(dir, `${id}.json`),
+              err => (err ? reject(err) : resolve())
+            )
+          )
+      );
     },
-
 
     // load an object from file
 
-    load: function(id, cb) {
-      mkdirp(dir, function(err) {
-        if (err) return cb(err);
-        loadFile(path.join(dir, id + '.json'), cb);
-      })
+    load(id) {
+      mkderp(dir).then(() => loadFile(path.join(dir, `${id}.json`)));
     }
+  };
+}
 
-  }
-};
-
-var readdir = function(dir, cb) {
-  fs.readdir(dir, function(err, files) {
-    if (err) return cb(err);
-    files = files.map(function(f) {
-      return path.join(dir, f);
+const readDir = dir =>
+  new Promise((resolve, reject) => {
+    fs.readdir(dir, (err, files) => {
+      if (err) return reject(err);
+      resolve(files.map(f => path.join(dir, f)));
     });
-    cb(null, files);
   });
-};
 
-
-var loadFile = function(f, cb) {
-  fs.readFile(f, 'utf8', function(err, code) {
-    if (err) return cb("error loading file" + err);
-    try {
-      var jsonObj = JSON.parse(code);
-    }
-    catch (e) {
-      cb("Error parsing " + f + ": " + e);
-    }
-    cb(null, jsonObj);
+const loadFile = f =>
+  new Promise((resolve, reject) => {
+    fs.readFile(f, 'utf8', (err, code) => {
+      if (err) reject('error loading file' + err);
+      let jsonObj;
+      try {
+        jsonObj = JSON.parse(code);
+      } catch (e) {
+        reject('Error parsing ' + f + ': ' + e);
+      }
+      resolve(jsonObj);
+    });
   });
-};
-
-var sort = function(objs, cb) {
-  async.sortBy(objs, function(obj, cb) {
-    cb(null, obj.name || '');
-  }, cb);
-};

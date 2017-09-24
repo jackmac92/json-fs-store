@@ -2,6 +2,10 @@
   "name": "json-fs-store",
   "description": "File system storage and retrieval of objects as JSON",
   "version": "1.0.1",
+  "main": "index",
+  "scripts": {
+    "test": "mocha spec/*"
+  },
   "dependencies": {
     "async": "^1.4.2",
     "graceful-fs": "^4.1.2",
@@ -12,13 +16,5 @@
     "temp": "^0.8.3",
     "mocha": "^2.3.3",
     "chai": "^3.3.0"
-  },
-  "main": "index",
-  "engines": {
-    "node": ">=0.4.12"
-  },
-  "scripts": {
-    "test": "mocha spec/*"
-  },
-  "repository": "alexkwolfe/json-fs-store"
+  }
 }

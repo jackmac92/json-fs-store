@@ -1,3 +1,5 @@
 node_modules
 .idea
+.DS_Storebundle.js
+bundle.js
 .DS_Store
